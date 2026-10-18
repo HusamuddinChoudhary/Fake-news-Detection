@@ -4,3 +4,4 @@ nltk
 scikit-learn
 requests
 python-dotenv
+gunicorn
