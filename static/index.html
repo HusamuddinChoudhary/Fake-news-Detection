@@ -1,0 +1,725 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TruthLens — Fake News Detector</title>
+<meta name="description" content="AI-powered fake news detector. Verify headlines and articles against live trusted news sources — no API key required.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+/* ══════════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════════ */
+:root {
+  --bg: #080c14;
+  --surface: #0d1420;
+  --surface2: #111c2e;
+  --glass: rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.08);
+  --accent: #3b82f6;
+  --accent2: #8b5cf6;
+  --green: #10b981;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --text: #f1f5f9;
+  --muted: #64748b;
+  --muted2: #94a3b8;
+  --real-glow: rgba(16,185,129,0.25);
+  --fake-glow: rgba(239,68,68,0.25);
+  --unsure-glow: rgba(245,158,11,0.25);
+}
+
+/* ══════════════════════════════════════════════
+   RESET & BASE
+══════════════════════════════════════════════ */
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body {
+  font-family:'Inter',system-ui,sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* Background grid */
+body::before {
+  content:'';
+  position:fixed; inset:0; z-index:0;
+  background-image:
+    linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+  background-size:50px 50px;
+  pointer-events:none;
+}
+
+/* Blobs */
+.blob {
+  position:fixed; border-radius:50%; filter:blur(120px); opacity:0.12;
+  pointer-events:none; z-index:0; transition:all 8s ease;
+}
+.blob-1 { width:600px;height:600px; background:radial-gradient(circle,#3b82f6,transparent); top:-100px;left:-100px; }
+.blob-2 { width:500px;height:500px; background:radial-gradient(circle,#8b5cf6,transparent); bottom:-100px;right:-100px; }
+.blob-3 { width:400px;height:400px; background:radial-gradient(circle,#10b981,transparent); top:50%;left:50%;transform:translate(-50%,-50%); opacity:0.05; }
+
+/* ══════════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════════ */
+.wrap { position:relative; z-index:1; max-width:1200px; margin:0 auto; padding:24px 20px 80px; }
+
+/* ══════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════ */
+header {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:20px 32px;
+  background:rgba(13,20,32,0.8);
+  backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--glass-border);
+  position:sticky; top:0; z-index:100;
+  margin-bottom:40px;
+}
+.logo {
+  display:flex; align-items:center; gap:10px;
+  font-size:20px; font-weight:800; letter-spacing:-0.5px;
+}
+.logo-icon {
+  width:36px;height:36px;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  border-radius:10px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:18px; box-shadow:0 4px 15px rgba(59,130,246,0.4);
+}
+.logo-text span { background:linear-gradient(135deg,#60a5fa,#a78bfa); -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.badge {
+  font-size:11px; font-weight:600; padding:4px 10px;
+  background:rgba(16,185,129,0.15);
+  border:1px solid rgba(16,185,129,0.3);
+  border-radius:99px; color:#34d399;
+  display:flex; align-items:center; gap:5px;
+}
+.badge::before { content:''; width:6px;height:6px; background:#10b981; border-radius:50%; animation:pulse-dot 2s infinite; }
+@keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.3)} }
+
+/* ══════════════════════════════════════════════
+   HERO
+══════════════════════════════════════════════ */
+.hero { text-align:center; margin-bottom:48px; }
+.hero h1 {
+  font-size:clamp(28px,5vw,52px);
+  font-weight:800; letter-spacing:-1.5px;
+  line-height:1.1;
+  background:linear-gradient(135deg,#f1f5f9 30%,#94a3b8);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+  margin-bottom:14px;
+}
+.hero h1 span {
+  background:linear-gradient(135deg,#60a5fa,#a78bfa,#34d399);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+}
+.hero p {
+  font-size:16px; color:var(--muted2); max-width:480px; margin:0 auto;
+  line-height:1.7;
+}
+.stats-row {
+  display:flex; gap:24px; justify-content:center; margin-top:28px;
+  flex-wrap:wrap;
+}
+.stat {
+  display:flex; align-items:center; gap:8px;
+  font-size:13px; color:var(--muted2);
+  background:var(--glass); border:1px solid var(--glass-border);
+  padding:8px 16px; border-radius:99px;
+}
+.stat-num { font-weight:700; color:var(--text); }
+
+/* ══════════════════════════════════════════════
+   MAIN GRID
+══════════════════════════════════════════════ */
+.grid { display:grid; grid-template-columns:1fr 380px; gap:28px; align-items:start; }
+@media(max-width:900px){ .grid { grid-template-columns:1fr; } }
+
+/* ══════════════════════════════════════════════
+   CARD
+══════════════════════════════════════════════ */
+.card {
+  background:var(--surface);
+  border:1px solid var(--glass-border);
+  border-radius:20px;
+  padding:28px;
+  transition:box-shadow 0.3s;
+}
+.card:hover { box-shadow:0 8px 40px rgba(0,0,0,0.3); }
+.card-title {
+  font-size:13px; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.08em; color:var(--muted); margin-bottom:16px;
+  display:flex; align-items:center; gap:8px;
+}
+.card-title::before {
+  content:''; flex-shrink:0;
+  width:3px; height:14px; border-radius:2px;
+  background:linear-gradient(#3b82f6,#8b5cf6);
+}
+
+/* ══════════════════════════════════════════════
+   INPUT AREA
+══════════════════════════════════════════════ */
+.tabs { display:flex; gap:4px; margin-bottom:16px; background:var(--glass); border-radius:12px; padding:4px; }
+.tab-btn {
+  flex:1; padding:8px 12px; border-radius:9px; border:none; cursor:pointer;
+  font:500 13px 'Inter',sans-serif; color:var(--muted2);
+  background:transparent; transition:all 0.2s;
+}
+.tab-btn.active { background:var(--surface2); color:var(--text); box-shadow:0 2px 8px rgba(0,0,0,0.3); }
+.tab-btn:hover:not(.active) { color:var(--text); }
+
+#tab-input, #tab-live { display:none; }
+#tab-input.visible, #tab-live.visible { display:block; }
+
+textarea#news-text {
+  width:100%; height:180px;
+  background:var(--surface2); border:1px solid var(--glass-border);
+  border-radius:14px; padding:16px; color:var(--text);
+  font:15px/1.6 'Inter',sans-serif; resize:vertical;
+  transition:border-color 0.2s, box-shadow 0.2s;
+  outline:none;
+}
+textarea#news-text:focus {
+  border-color:rgba(59,130,246,0.5);
+  box-shadow:0 0 0 3px rgba(59,130,246,0.1);
+}
+textarea#news-text::placeholder { color:var(--muted); }
+
+.char-count { text-align:right; font-size:11px; color:var(--muted); margin-top:6px; }
+
+.btn-check {
+  width:100%; margin-top:16px; padding:15px;
+  background:linear-gradient(135deg,#3b82f6,#8b5cf6);
+  border:none; border-radius:14px; cursor:pointer;
+  font:600 15px 'Inter',sans-serif; color:#fff;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+  transition:opacity 0.2s, transform 0.15s, box-shadow 0.2s;
+  box-shadow:0 4px 20px rgba(59,130,246,0.3);
+  position:relative; overflow:hidden;
+}
+.btn-check::before {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(135deg,rgba(255,255,255,0.1),transparent);
+  opacity:0; transition:opacity 0.2s;
+}
+.btn-check:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 8px 30px rgba(59,130,246,0.4); }
+.btn-check:hover:not(:disabled)::before { opacity:1; }
+.btn-check:active:not(:disabled) { transform:translateY(0); }
+.btn-check:disabled { opacity:0.6; cursor:wait; }
+.btn-icon { font-size:18px; }
+.spinner { width:18px;height:18px; border:2px solid rgba(255,255,255,0.3); border-top-color:#fff; border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ══════════════════════════════════════════════
+   LIVE NEWS PICKER
+══════════════════════════════════════════════ */
+.live-loader { text-align:center; padding:40px; color:var(--muted); }
+.live-grid { display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; padding-right:4px; }
+.live-grid::-webkit-scrollbar { width:4px; }
+.live-grid::-webkit-scrollbar-track { background:transparent; }
+.live-grid::-webkit-scrollbar-thumb { background:var(--glass-border); border-radius:4px; }
+.news-item {
+  background:var(--surface2); border:1px solid var(--glass-border);
+  border-radius:12px; padding:12px 14px; cursor:pointer;
+  transition:all 0.2s; display:flex; gap:10px; align-items:flex-start;
+}
+.news-item:hover { border-color:rgba(59,130,246,0.4); background:rgba(59,130,246,0.05); transform:translateX(3px); }
+.news-item.selected { border-color:rgba(59,130,246,0.6); background:rgba(59,130,246,0.08); }
+.news-src {
+  font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em;
+  padding:2px 8px; border-radius:99px; white-space:nowrap; flex-shrink:0; margin-top:2px;
+  background:rgba(59,130,246,0.15); color:#60a5fa; border:1px solid rgba(59,130,246,0.2);
+}
+.news-title { font-size:13px; line-height:1.5; color:var(--muted2); }
+.news-item:hover .news-title, .news-item.selected .news-title { color:var(--text); }
+
+/* Source filter chips */
+.source-filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+.src-chip {
+  font-size:11px; padding:4px 10px; border-radius:99px; border:1px solid var(--glass-border);
+  background:transparent; color:var(--muted2); cursor:pointer; transition:all 0.15s;
+}
+.src-chip:hover { border-color:rgba(59,130,246,0.4); color:var(--text); }
+.src-chip.active { background:rgba(59,130,246,0.15); border-color:rgba(59,130,246,0.4); color:#60a5fa; }
+
+/* ══════════════════════════════════════════════
+   RESULTS
+══════════════════════════════════════════════ */
+#result-area { margin-top:24px; }
+.result-card {
+  border-radius:20px; padding:28px;
+  border:1px solid;
+  animation:fadeUp 0.4s ease;
+  position:relative; overflow:hidden;
+}
+.result-card::before {
+  content:''; position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg, var(--verdict-color, #3b82f6), transparent);
+}
+@keyframes fadeUp { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:translateY(0)} }
+
+.result-card.real { background:rgba(16,185,129,0.05); border-color:rgba(16,185,129,0.2); --verdict-color:#10b981; }
+.result-card.fake { background:rgba(239,68,68,0.05); border-color:rgba(239,68,68,0.2); --verdict-color:#ef4444; }
+.result-card.unsure { background:rgba(245,158,11,0.05); border-color:rgba(245,158,11,0.2); --verdict-color:#f59e0b; }
+
+.verdict-row { display:flex; align-items:center; gap:14px; margin-bottom:20px; }
+.verdict-badge {
+  padding:8px 20px; border-radius:99px; font-weight:800; font-size:18px;
+  letter-spacing:1px; text-transform:uppercase;
+  display:flex; align-items:center; gap:8px;
+}
+.verdict-badge.real { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); }
+.verdict-badge.fake { background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.3); }
+.verdict-badge.unsure { background:rgba(245,158,11,0.15); color:#fbbf24; border:1px solid rgba(245,158,11,0.3); }
+.verdict-icon { font-size:22px; }
+
+.confidence-text { font-size:13px; color:var(--muted2); }
+
+/* Gauge */
+.gauge-wrap { margin-bottom:20px; }
+.gauge-labels { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); margin-bottom:6px; }
+.gauge-track { height:8px; border-radius:99px; background:rgba(255,255,255,0.06); overflow:hidden; position:relative; }
+.gauge-fill {
+  height:100%; border-radius:99px; position:absolute; left:0;
+  transition:width 1s cubic-bezier(0.4,0,0.2,1);
+}
+.gauge-fill.real { background:linear-gradient(90deg,#059669,#10b981); box-shadow:0 0 10px rgba(16,185,129,0.5); }
+.gauge-fill.fake { background:linear-gradient(90deg,#dc2626,#ef4444); box-shadow:0 0 10px rgba(239,68,68,0.5); }
+.gauge-fill.unsure { background:linear-gradient(90deg,#d97706,#f59e0b); box-shadow:0 0 10px rgba(245,158,11,0.5); }
+.gauge-pcts { display:flex; justify-content:space-between; font-size:12px; margin-top:6px; }
+.pct-real { color:#34d399; font-weight:600; }
+.pct-fake { color:#f87171; font-weight:600; }
+
+/* Sections */
+.section { margin-top:20px; }
+.section-head {
+  font-size:11px; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.08em; color:var(--muted); margin-bottom:10px;
+  display:flex; align-items:center; gap:6px;
+}
+.section-icon { font-size:14px; }
+.pill-list { display:flex; flex-direction:column; gap:6px; }
+.pill-item {
+  display:flex; align-items:flex-start; gap:8px;
+  font-size:13px; padding:10px 12px; border-radius:10px;
+  line-height:1.4;
+}
+.pill-item.flag { background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.15); color:#fca5a5; }
+.pill-item.pos { background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.15); color:#6ee7b7; }
+.pill-item-icon { flex-shrink:0; margin-top:1px; }
+
+/* Matched sources */
+.source-list { display:flex; flex-direction:column; gap:6px; }
+.source-row {
+  display:flex; gap:10px; align-items:flex-start; padding:10px 12px;
+  background:rgba(59,130,246,0.05); border:1px solid rgba(59,130,246,0.1);
+  border-radius:10px;
+}
+.source-row a { color:var(--muted2); font-size:13px; text-decoration:none; line-height:1.4; }
+.source-row a:hover { color:var(--text); }
+.src-badge { font-size:10px; padding:2px 8px; border-radius:99px; white-space:nowrap; flex-shrink:0; margin-top:2px; }
+.src-badge.verified { background:rgba(16,185,129,0.15); color:#34d399; border:1px solid rgba(16,185,129,0.3); }
+
+/* Error */
+.error-msg { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:12px; padding:14px 16px; color:#f87171; font-size:14px; }
+
+/* ══════════════════════════════════════════════
+   SIDEBAR — LIVE FEED
+══════════════════════════════════════════════ */
+.sidebar-inner { position:sticky; top:88px; }
+.live-count { font-size:12px; color:var(--muted); margin-bottom:12px; }
+.live-feed { display:flex; flex-direction:column; gap:8px; max-height:70vh; overflow-y:auto; padding-right:4px; }
+.live-feed::-webkit-scrollbar { width:3px; }
+.live-feed::-webkit-scrollbar-thumb { background:var(--glass-border); border-radius:4px; }
+.feed-item {
+  padding:12px 14px; border-radius:12px;
+  background:var(--surface2); border:1px solid var(--glass-border);
+  cursor:pointer; transition:all 0.2s;
+}
+.feed-item:hover { border-color:rgba(59,130,246,0.35); background:rgba(59,130,246,0.06); }
+.feed-src {
+  font-size:10px; font-weight:600; text-transform:uppercase;
+  letter-spacing:0.06em; color:#60a5fa; margin-bottom:5px;
+}
+.feed-title { font-size:12px; color:var(--muted2); line-height:1.5; }
+.feed-item:hover .feed-title { color:var(--text); }
+
+.refresh-btn {
+  width:100%; margin-bottom:14px; padding:9px; border-radius:10px;
+  background:var(--glass); border:1px solid var(--glass-border);
+  color:var(--muted2); font:500 12px 'Inter',sans-serif; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  transition:all 0.2s;
+}
+.refresh-btn:hover { background:rgba(59,130,246,0.1); border-color:rgba(59,130,246,0.3); color:var(--text); }
+.refresh-icon { font-size:14px; transition:transform 0.4s; }
+.refresh-btn.spin .refresh-icon { animation:spin 0.6s linear; }
+
+/* ══════════════════════════════════════════════
+   SKELETON
+══════════════════════════════════════════════ */
+.skeleton { background:linear-gradient(90deg,var(--surface2) 25%,rgba(255,255,255,0.04) 50%,var(--surface2) 75%); background-size:200% 100%; animation:shimmer 1.4s infinite; border-radius:8px; }
+@keyframes shimmer { to{background-position:-200% 0} }
+
+/* ══════════════════════════════════════════════
+   FOOTER NOTE
+══════════════════════════════════════════════ */
+.note {
+  margin-top:40px; text-align:center;
+  font-size:12px; color:var(--muted);
+  padding:16px; background:var(--glass); border:1px solid var(--glass-border);
+  border-radius:12px;
+}
+</style>
+</head>
+<body>
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">🔍</div>
+    <div class="logo-text">Truth<span>Lens</span></div>
+  </div>
+  <div class="badge">Live Feed Active</div>
+</header>
+
+<div class="wrap">
+
+  <!-- HERO -->
+  <div class="hero">
+    <h1>Detect Fake News <span>Instantly</span></h1>
+    <p>Paste any headline or article, or pick from live news. We cross-reference against trusted global sources in real time.</p>
+    <div class="stats-row">
+      <div class="stat"><span>📡</span><span class="stat-num" id="feed-count">—</span> live articles</div>
+      <div class="stat"><span>🏛️</span><span class="stat-num">10</span> trusted sources</div>
+      <div class="stat"><span>⚡</span>Real-time analysis</div>
+    </div>
+  </div>
+
+  <!-- MAIN GRID -->
+  <div class="grid">
+
+    <!-- LEFT COLUMN -->
+    <div>
+      <div class="card">
+        <div class="card-title">Analyze News</div>
+
+        <!-- TABS -->
+        <div class="tabs" role="tablist">
+          <button class="tab-btn active" id="btn-custom" role="tab" onclick="switchTab('custom')">✏️ Paste text</button>
+          <button class="tab-btn" id="btn-live" role="tab" onclick="switchTab('live')">📡 Live News</button>
+        </div>
+
+        <!-- CUSTOM INPUT -->
+        <div id="tab-input" class="visible">
+          <textarea id="news-text" placeholder="Paste a headline, article or claim here…" oninput="updateCount()"></textarea>
+          <div class="char-count"><span id="char-count">0</span> characters</div>
+        </div>
+
+        <!-- LIVE PICKER -->
+        <div id="tab-live">
+          <div id="source-filters" class="source-filters"></div>
+          <div id="live-picker" class="live-loader">
+            <div style="font-size:24px;margin-bottom:8px;">⏳</div>
+            Loading live news…
+          </div>
+        </div>
+
+        <button class="btn-check" id="check-btn" onclick="runCheck()">
+          <span class="btn-icon">🔎</span>
+          <span id="btn-label">Analyze Now</span>
+        </button>
+      </div>
+
+      <!-- RESULTS -->
+      <div id="result-area"></div>
+
+      <div class="note">
+        🤖 Analysis uses heuristic NLP, VADER sentiment scoring, and live cross-referencing against trusted RSS feeds from BBC, Reuters, AP, NPR, Guardian, Al Jazeera, CNN, NBC, ABC &amp; Sky News.
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN — LIVE FEED -->
+    <div class="sidebar-inner">
+      <div class="card">
+        <div class="card-title">📡 Live Top Stories</div>
+        <button class="refresh-btn" id="refresh-btn" onclick="loadSidebar()">
+          <span class="refresh-icon">🔄</span> Refresh feed
+        </button>
+        <p class="live-count" id="sidebar-count">Loading…</p>
+        <div class="live-feed" id="sidebar-feed"></div>
+      </div>
+    </div>
+
+  </div><!-- end .grid -->
+</div><!-- end .wrap -->
+
+<script>
+// ═══════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════
+let allArticles = [];
+let activeSource = 'All';
+
+// ═══════════════════════════════════════════════
+//  INIT
+// ═══════════════════════════════════════════════
+(async function init() {
+  await loadSidebar();
+  await loadLivePicker();
+})();
+
+// ═══════════════════════════════════════════════
+//  TABS
+// ═══════════════════════════════════════════════
+function switchTab(tab) {
+  document.getElementById('tab-input').classList.toggle('visible', tab === 'custom');
+  document.getElementById('tab-live').classList.toggle('visible', tab === 'live');
+  document.getElementById('btn-custom').classList.toggle('active', tab === 'custom');
+  document.getElementById('btn-live').classList.toggle('active', tab === 'live');
+}
+
+function updateCount() {
+  document.getElementById('char-count').textContent = document.getElementById('news-text').value.length;
+}
+
+// ═══════════════════════════════════════════════
+//  LIVE NEWS FETCH
+// ═══════════════════════════════════════════════
+async function fetchNews() {
+  const res = await fetch('/api/live-news');
+  const d = await res.json();
+  return d.articles || [];
+}
+
+async function loadSidebar() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spin');
+  btn.disabled = true;
+  try {
+    allArticles = await fetchNews();
+    document.getElementById('feed-count').textContent = allArticles.length;
+    document.getElementById('sidebar-count').textContent = `${allArticles.length} stories loaded`;
+    renderSidebar(allArticles.slice(0, 30));
+  } catch(e) {
+    document.getElementById('sidebar-count').textContent = 'Failed to load feed';
+  }
+  setTimeout(() => { btn.classList.remove('spin'); btn.disabled = false; }, 600);
+}
+
+function renderSidebar(articles) {
+  const feed = document.getElementById('sidebar-feed');
+  feed.innerHTML = '';
+  articles.forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'feed-item';
+    div.innerHTML = `<div class="feed-src">${escHtml(a.source)}</div><div class="feed-title">${escHtml(a.title)}</div>`;
+    div.onclick = () => {
+      document.getElementById('news-text').value = a.title + (a.summary ? '\n\n' + a.summary : '');
+      updateCount();
+      switchTab('custom');
+      document.getElementById('news-text').scrollIntoView({behavior:'smooth', block:'center'});
+      runCheck();
+    };
+    feed.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  LIVE PICKER TAB
+// ═══════════════════════════════════════════════
+async function loadLivePicker() {
+  const picker = document.getElementById('live-picker');
+  try {
+    if (!allArticles.length) allArticles = await fetchNews();
+    renderSourceFilters(allArticles);
+    renderPicker(allArticles);
+  } catch(e) {
+    picker.innerHTML = '<span style="color:#f87171">Failed to load live news.</span>';
+  }
+}
+
+function renderSourceFilters(articles) {
+  const sources = ['All', ...new Set(articles.map(a => a.source))];
+  const container = document.getElementById('source-filters');
+  container.innerHTML = '';
+  sources.forEach(src => {
+    const btn = document.createElement('button');
+    btn.className = 'src-chip' + (src === activeSource ? ' active' : '');
+    btn.textContent = src;
+    btn.onclick = () => {
+      activeSource = src;
+      document.querySelectorAll('.src-chip').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      const filtered = src === 'All' ? articles : articles.filter(a => a.source === src);
+      renderPicker(filtered);
+    };
+    container.appendChild(btn);
+  });
+}
+
+function renderPicker(articles) {
+  const picker = document.getElementById('live-picker');
+  picker.className = 'live-grid';
+  picker.innerHTML = '';
+  articles.slice(0, 40).forEach(a => {
+    const div = document.createElement('div');
+    div.className = 'news-item';
+    div.innerHTML = `
+      <div class="news-src">${escHtml(a.source)}</div>
+      <div class="news-title">${escHtml(a.title)}</div>
+    `;
+    div.onclick = () => {
+      document.querySelectorAll('.news-item').forEach(i => i.classList.remove('selected'));
+      div.classList.add('selected');
+      document.getElementById('news-text').value = a.title + (a.summary ? '\n\n' + a.summary : '');
+      updateCount();
+      switchTab('custom');
+    };
+    picker.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════════════
+//  ANALYZE
+// ═══════════════════════════════════════════════
+async function runCheck() {
+  const text = document.getElementById('news-text').value.trim();
+  const btn = document.getElementById('check-btn');
+  const label = document.getElementById('btn-label');
+  const out = document.getElementById('result-area');
+
+  if (text.length < 10) {
+    out.innerHTML = '<div class="error-msg">⚠️ Please enter at least a short headline (10+ characters).</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  label.textContent = 'Analyzing…';
+  btn.innerHTML = `<div class="spinner"></div><span id="btn-label">Analyzing…</span>`;
+  out.innerHTML = renderSkeleton();
+
+  try {
+    const res = await fetch('/api/check', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({text})
+    });
+    const d = await res.json();
+    if (!res.ok) { out.innerHTML = `<div class="error-msg">⚠️ ${escHtml(d.error || 'Something went wrong')}</div>`; }
+    else { out.innerHTML = ''; out.appendChild(buildResult(d)); }
+  } catch(e) {
+    out.innerHTML = '<div class="error-msg">⚠️ Cannot reach the server. Is server.py running?</div>';
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = `<span class="btn-icon">🔎</span><span id="btn-label">Analyze Now</span>`;
+}
+
+// ═══════════════════════════════════════════════
+//  RENDER RESULT
+// ═══════════════════════════════════════════════
+function buildResult(r) {
+  const real = r.verdict === 'REAL';
+  const unsure = r.real_probability >= 40 && r.real_probability <= 60;
+  const cls = unsure ? 'unsure' : (real ? 'real' : 'fake');
+  const icon = unsure ? '🤔' : (real ? '✅' : '❌');
+  const label = unsure ? 'UNCERTAIN' : r.verdict;
+
+  const card = document.createElement('div');
+  card.className = `result-card ${cls}`;
+
+  // Verdict row
+  card.innerHTML = `
+    <div class="verdict-row">
+      <div class="verdict-badge ${cls}"><span class="verdict-icon">${icon}</span>${label}</div>
+      <div class="confidence-text">${escHtml(r.confidence || '')}</div>
+    </div>
+
+    <!-- Gauge -->
+    <div class="gauge-wrap">
+      <div class="gauge-labels"><span>FAKE</span><span>REAL</span></div>
+      <div class="gauge-track">
+        <div class="gauge-fill ${cls}" id="gfill" style="width:0%"></div>
+      </div>
+      <div class="gauge-pcts">
+        <span class="pct-fake">🟥 ${r.fake_probability}% fake</span>
+        <span class="pct-real">${r.real_probability}% real 🟩</span>
+      </div>
+    </div>
+  `;
+
+  // Red flags
+  if (r.red_flags && r.red_flags.length) {
+    const sec = makeSection('🚩 Red Flags Detected', r.red_flags.map(f =>
+      `<div class="pill-item flag"><span class="pill-item-icon">⚠️</span>${escHtml(f)}</div>`
+    ).join(''));
+    card.appendChild(sec);
+  }
+
+  // Positives
+  if (r.positives && r.positives.length) {
+    const sec = makeSection('✅ Credibility Signals', r.positives.map(p =>
+      `<div class="pill-item pos"><span class="pill-item-icon">✔️</span>${escHtml(p)}</div>`
+    ).join(''));
+    card.appendChild(sec);
+  }
+
+  // Matched sources
+  if (r.matched_sources && r.matched_sources.length) {
+    const rows = r.matched_sources.map(s => `
+      <div class="source-row">
+        <span class="src-badge verified">Trusted</span>
+        <a href="${escHtml(s.url)}" target="_blank" rel="noopener">${escHtml(s.title)}</a>
+      </div>
+    `).join('');
+    card.appendChild(makeSection('📰 Found in Trusted Sources', `<div class="source-list">${rows}</div>`));
+  }
+
+  // Animate gauge after mount
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      const fill = card.querySelector('#gfill');
+      if (fill) fill.style.width = r.real_probability + '%';
+    }, 80);
+  });
+
+  return card;
+}
+
+function makeSection(title, inner) {
+  const div = document.createElement('div');
+  div.className = 'section';
+  div.innerHTML = `<div class="section-head"><span class="section-icon"></span>${escHtml(title)}</div><div class="pill-list">${inner}</div>`;
+  // Fix: title includes emoji so don't escape it
+  div.querySelector('.section-head').innerHTML = `<span class="section-icon"></span>${title}`;
+  div.querySelector('.pill-list').innerHTML = inner;
+  return div;
+}
+
+function renderSkeleton() {
+  return `
+    <div class="card" style="margin-top:24px">
+      <div class="skeleton" style="height:28px;width:140px;margin-bottom:18px"></div>
+      <div class="skeleton" style="height:8px;margin-bottom:18px"></div>
+      <div class="skeleton" style="height:14px;width:70%;margin-bottom:10px"></div>
+      <div class="skeleton" style="height:14px;width:55%;margin-bottom:10px"></div>
+      <div class="skeleton" style="height:14px;width:80%"></div>
+    </div>`;
+}
+
+function escHtml(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
